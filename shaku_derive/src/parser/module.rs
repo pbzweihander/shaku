@@ -98,6 +98,10 @@ impl Parse for ModuleServices {
             components: input.parse()?,
             comma_token: input.parse()?,
             providers: input.parse()?,
+            #[cfg(feature = "async_provider")]
+            comma_token2: input.parse()?,
+            #[cfg(feature = "async_provider")]
+            async_providers: input.parse()?,
             trailing_comma: input.parse()?,
         })
     }

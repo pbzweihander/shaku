@@ -6,6 +6,9 @@ use crate::{Component, ComponentFn, HasComponent, HasProvider, Module, ModuleBui
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+#[cfg(feature = "async_provider")]
+use crate::provider::{AsyncProviderFn, HasAsyncProvider};
+
 /// Builds a [`Module`]. Component parameters can be set, and both components and providers
 /// implementations can be overridden.
 ///
@@ -16,6 +19,8 @@ pub struct ModuleBuilder<M: Module> {
     component_overrides: ComponentMap,
     component_fn_overrides: ComponentMap,
     provider_overrides: ComponentMap,
+    #[cfg(feature = "async_provider")]
+    async_provider_overrides: ComponentMap,
     _module: PhantomData<M>,
 }
 
@@ -28,6 +33,8 @@ impl<M: Module> ModuleBuilder<M> {
             component_overrides: ComponentMap::new(),
             component_fn_overrides: ComponentMap::new(),
             provider_overrides: ComponentMap::new(),
+            #[cfg(feature = "async_provider")]
+            async_provider_overrides: ComponentMap::new(),
             _module: PhantomData,
         }
     }
@@ -79,6 +86,19 @@ impl<M: Module> ModuleBuilder<M> {
         self
     }
 
+    #[cfg(feature = "async_provider")]
+    pub fn with_async_provider_override<I: 'static + ?Sized>(
+        mut self,
+        async_provider_fn: AsyncProviderFn<M, I>,
+    ) -> Self
+    where
+        M: HasAsyncProvider<I>,
+    {
+        self.async_provider_overrides
+            .insert(Arc::new(async_provider_fn));
+        self
+    }
+
     /// Build the module
     pub fn build(self) -> M {
         M::build(ModuleBuildContext::new(
@@ -86,6 +106,8 @@ impl<M: Module> ModuleBuilder<M> {
             self.component_overrides,
             self.component_fn_overrides,
             self.provider_overrides,
+            #[cfg(feature = "async_provider")]
+            self.async_provider_overrides,
             self.submodules,
         ))
     }

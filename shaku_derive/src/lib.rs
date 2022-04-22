@@ -31,6 +31,16 @@ pub fn provider(input: TokenStream) -> TokenStream {
         .into()
 }
 
+#[cfg(feature = "async_provider")]
+#[proc_macro_derive(AsyncProvider, attributes(shaku))]
+pub fn async_provider(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+
+    macros::async_provider::expand_derive_async_provider(&input)
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
 /// Create a [`Module`] which is associated with some components and providers.
 ///
 /// ## Builder

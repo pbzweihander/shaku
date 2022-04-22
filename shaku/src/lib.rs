@@ -34,6 +34,8 @@ mod provider;
 pub mod guide;
 
 // Reexport proc macros
+#[cfg(all(feature = "derive", feature = "async_provider"))]
+pub use shaku_derive::AsyncProvider;
 #[cfg(feature = "derive")]
 pub use {shaku_derive::module, shaku_derive::Component, shaku_derive::Provider};
 
@@ -44,6 +46,20 @@ pub use once_cell::sync::OnceCell;
 #[doc(hidden)]
 #[cfg(not(feature = "thread_safe"))]
 pub use once_cell::unsync::OnceCell;
+
+#[doc(hidden)]
+#[cfg(not(feature = "anyhow_error"))]
+pub type BoxedError = Box<dyn std::error::Error>;
+#[doc(hidden)]
+#[cfg(all(not(feature = "anyhow_error"), feature = "async_provider"))]
+pub type BoxedSendableError = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+#[doc(hidden)]
+#[cfg(feature = "anyhow_error")]
+pub type BoxedError = anyhow::Error;
+#[doc(hidden)]
+#[cfg(all(feature = "anyhow_error", feature = "async_provider"))]
+pub type BoxedSendableError = anyhow::Error;
 
 // Expose a flat module structure
 pub use crate::{component::*, module::*, provider::*};

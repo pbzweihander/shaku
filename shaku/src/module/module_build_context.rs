@@ -6,6 +6,9 @@ use std::any::{type_name, TypeId};
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 
+#[cfg(feature = "async_provider")]
+use crate::provider::{AsyncProvider, AsyncProviderFn, HasAsyncProvider};
+
 /// Builds a [`Module`] and its associated components. Build context, such as
 /// parameters and resolved components, are stored in this struct.
 ///
@@ -14,6 +17,8 @@ pub struct ModuleBuildContext<M: Module> {
     resolved_components: ComponentMap,
     component_fn_overrides: ComponentMap,
     provider_overrides: ComponentMap,
+    #[cfg(feature = "async_provider")]
+    async_provider_overrides: ComponentMap,
     parameters: ParameterMap,
     submodules: M::Submodules,
     resolve_chain: Vec<ResolveStep>,
@@ -41,12 +46,15 @@ impl<M: Module> ModuleBuildContext<M> {
         component_overrides: ComponentMap,
         component_fn_overrides: ComponentMap,
         provider_overrides: ComponentMap,
+        #[cfg(feature = "async_provider")] async_provider_overrides: ComponentMap,
         submodules: M::Submodules,
     ) -> Self {
         ModuleBuildContext {
             resolved_components: component_overrides,
             component_fn_overrides,
             provider_overrides,
+            #[cfg(feature = "async_provider")]
+            async_provider_overrides,
             parameters,
             submodules,
             resolve_chain: Vec::new(),
@@ -114,6 +122,17 @@ impl<M: Module> ModuleBuildContext<M> {
             .get::<Arc<ProviderFn<M, P::Interface>>>()
             .map(Arc::clone)
             .unwrap_or_else(|| Arc::new(Box::new(P::provide)))
+    }
+
+    #[cfg(feature = "async_provider")]
+    pub fn async_provider_fn<P: AsyncProvider<M>>(&self) -> Arc<AsyncProviderFn<M, P::Interface>>
+    where
+        M: HasAsyncProvider<P::Interface>,
+    {
+        self.async_provider_overrides
+            .get::<Arc<AsyncProviderFn<M, P::Interface>>>()
+            .map(Arc::clone)
+            .unwrap_or_else(|| Arc::new(Box::new(P::async_provide)))
     }
 
     fn add_resolve_step<C: Component<M>>(&mut self) {

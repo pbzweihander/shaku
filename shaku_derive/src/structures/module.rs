@@ -12,6 +12,7 @@ pub type ComponentItem = ModuleItem<ComponentAttribute>;
 mod kw {
     syn::custom_keyword!(components);
     syn::custom_keyword!(providers);
+    syn::custom_keyword!(async_providers);
 }
 
 /// The main module data structure, parsed from the macro input
@@ -44,6 +45,10 @@ pub struct ModuleServices {
     pub components: ModuleItems<kw::components, ComponentAttribute>,
     pub comma_token: syn::Token![,],
     pub providers: ModuleItems<kw::providers, ProviderAttribute>,
+    #[cfg(feature = "async_provider")]
+    pub comma_token2: syn::Token![,],
+    #[cfg(feature = "async_provider")]
+    pub async_providers: ModuleItems<kw::async_providers, ProviderAttribute>,
     pub trailing_comma: Option<syn::Token![,]>,
 }
 

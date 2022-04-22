@@ -13,6 +13,7 @@ edition = "2018"
 shaku_derive = { version = "~0.6.0", path = "../shaku_derive", optional = true }
 anymap = "0.12.1"
 once_cell = "1.5"
+anyhow = { version = "1.0.40", optional = true }
 
 [dev-dependencies]
 rand = "0.8"
@@ -23,3 +24,5 @@ default = ["thread_safe", "derive"]
 
 thread_safe = []
 derive = ["shaku_derive"]
+async_provider = ["thread_safe", "shaku_derive/async_provider"]
+anyhow_error = ["anyhow"]

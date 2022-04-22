@@ -34,6 +34,8 @@ pub enum PropertyType {
     Parameter,
     Component,
     Provided,
+    #[cfg(feature = "async_provider")]
+    AsyncProvided,
 }
 
 /// Holds information about a service property.
@@ -53,6 +55,8 @@ impl Property {
         match self.property_type {
             PropertyType::Component | PropertyType::Provided => true,
             PropertyType::Parameter => false,
+            #[cfg(feature = "async_provider")]
+            PropertyType::AsyncProvided => true,
         }
     }
 }

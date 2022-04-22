@@ -1,8 +1,8 @@
 //! This module contains trait definitions for provided services and interfaces
 
 use crate::module::ModuleInterface;
+use crate::BoxedError;
 use crate::Module;
-use std::error::Error;
 
 /// Like [`Component`]s, providers provide a service by implementing an interface.
 ///
@@ -21,7 +21,7 @@ pub trait Provider<M: Module>: 'static {
 
     /// Provides the service, possibly resolving other components/providers
     /// to do so.
-    fn provide(module: &M) -> Result<Box<Self::Interface>, Box<dyn Error>>;
+    fn provide(module: &M) -> Result<Box<Self::Interface>, BoxedError>;
 }
 
 /// The type signature of [`Provider::provide`]. This is used when overriding a
@@ -30,14 +30,14 @@ pub trait Provider<M: Module>: 'static {
 /// [`Provider::provide`]: trait.Provider.html#tymethod.provide
 /// [`ModuleBuilder::with_provider_override`]: struct.ModuleBuilder.html#method.with_provider_override
 #[cfg(not(feature = "thread_safe"))]
-pub type ProviderFn<M, I> = Box<dyn (Fn(&M) -> Result<Box<I>, Box<dyn Error>>)>;
+pub type ProviderFn<M, I> = Box<dyn (Fn(&M) -> Result<Box<I>, BoxedError>)>;
 /// The type signature of [`Provider::provide`]. This is used when overriding a
 /// provider via [`ModuleBuilder::with_provider_override`]
 ///
 /// [`Provider::provide`]: trait.Provider.html#tymethod.provide
 /// [`ModuleBuilder::with_provider_override`]: struct.ModuleBuilder.html#method.with_provider_override
 #[cfg(feature = "thread_safe")]
-pub type ProviderFn<M, I> = Box<dyn (Fn(&M) -> Result<Box<I>, Box<dyn Error>>) + Send + Sync>;
+pub type ProviderFn<M, I> = Box<dyn (Fn(&M) -> Result<Box<I>, BoxedError>) + Send + Sync>;
 
 /// Indicates that a module contains a provider which implements the interface.
 pub trait HasProvider<I: ?Sized>: ModuleInterface {
@@ -69,5 +69,33 @@ pub trait HasProvider<I: ?Sized>: ModuleInterface {
     /// let foo: Box<dyn Foo> = module.provide().unwrap();
     /// # }
     /// ```
-    fn provide(&self) -> Result<Box<I>, Box<dyn Error>>;
+    fn provide(&self) -> Result<Box<I>, BoxedError>;
 }
+
+#[cfg(feature = "async_provider")]
+mod async_provider {
+    use std::future::Future;
+    use std::pin::Pin;
+
+    use super::*;
+    use crate::BoxedSendableError;
+
+    pub type AsyncProvideFuture<'a, I> =
+        Pin<Box<dyn Future<Output = Result<Box<I>, BoxedSendableError>> + Send + 'a>>;
+
+    pub trait AsyncProvider<M: Module>: 'static {
+        type Interface: ?Sized;
+
+        fn async_provide(module: &M) -> AsyncProvideFuture<'_, Self::Interface>;
+    }
+
+    pub trait HasAsyncProvider<I: ?Sized>: ModuleInterface {
+        fn async_provide(&self) -> AsyncProvideFuture<'_, I>;
+    }
+
+    pub type AsyncProviderFn<M, I> =
+        Box<dyn (for<'a> Fn(&'a M) -> AsyncProvideFuture<'a, I>) + Send + Sync>;
+}
+
+#[cfg(feature = "async_provider")]
+pub use async_provider::*;

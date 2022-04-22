@@ -45,6 +45,18 @@ pub fn expand_module_macro(module: ModuleData) -> syn::Result<TokenStream> {
         .map(|(i, provider)| has_provider_impl(i, &provider.ty, &module))
         .collect();
 
+    #[cfg(feature = "async_provider")]
+    let has_async_provider_impls: Vec<TokenStream> = module
+        .services
+        .async_providers
+        .items
+        .iter()
+        .enumerate()
+        .map(|(i, provider)| has_async_provider_impl(i, &provider.ty, &module))
+        .collect();
+    #[cfg(not(feature = "async_provider"))]
+    let has_async_provider_impls: Vec<TokenStream> = vec![];
+
     let has_subcomponent_impls: Vec<TokenStream> = module
         .submodules
         .iter()
@@ -83,6 +95,7 @@ pub fn expand_module_macro(module: ModuleData) -> syn::Result<TokenStream> {
         #module_impl
         #(#has_component_impls)*
         #(#has_provider_impls)*
+        #(#has_async_provider_impls)*
         #(#has_subcomponent_impls)*
         #(#has_subprovider_impls)*
     };
@@ -114,6 +127,18 @@ fn module_struct(module: &ModuleData, capture_build_context: bool) -> TokenStrea
         .map(|(i, provider)| provider_property(i, &provider.ty))
         .collect();
 
+    #[cfg(feature = "async_provider")]
+    let async_provider_properties: Vec<TokenStream> = module
+        .services
+        .async_providers
+        .items
+        .iter()
+        .enumerate()
+        .map(|(i, provider)| async_provider_property(i, &provider.ty))
+        .collect();
+    #[cfg(not(feature = "async_provider"))]
+    let async_provider_properties: Vec<TokenStream> = vec![];
+
     let submodule_properties: Vec<TokenStream> = module
         .submodules
         .iter()
@@ -136,6 +161,7 @@ fn module_struct(module: &ModuleData, capture_build_context: bool) -> TokenStrea
         #visibility struct #module_name #module_generics #where_clause {
             #(#component_properties,)*
             #(#provider_properties,)*
+            #(#async_provider_properties,)*
             #(#submodule_properties,)*
             #build_context_property
         }
@@ -176,6 +202,18 @@ fn module_impl(module: &ModuleData, capture_build_context: bool) -> TokenStream 
         .map(|(i, provider)| provider_build(i, &provider.ty))
         .collect();
 
+    #[cfg(feature = "async_provider")]
+    let async_provider_builders: Vec<TokenStream> = module
+        .services
+        .async_providers
+        .items
+        .iter()
+        .enumerate()
+        .map(|(i, provider)| async_provider_build(i, &provider.ty))
+        .collect();
+    #[cfg(not(feature = "async_provider"))]
+    let async_provider_builders: Vec<TokenStream> = vec![];
+
     let submodules_init = submodules_init(&module.submodules);
     let submodule_names = submodule_names(&module.submodules);
     let submodule_types: Vec<&Type> = module.submodules.iter().map(|sub| &sub.ty).collect();
@@ -196,6 +234,7 @@ fn module_impl(module: &ModuleData, capture_build_context: bool) -> TokenStream 
                 Self {
                     #(#component_builders,)*
                     #(#provider_builders,)*
+                    #(#async_provider_builders,)*
                     #(#submodule_names,)*
                     #build_context_init
                 }
@@ -249,6 +288,15 @@ fn provider_build(index: usize, provider_ty: &Type) -> TokenStream {
     }
 }
 
+#[cfg(feature = "async_provider")]
+fn async_provider_build(index: usize, provider_ty: &Type) -> TokenStream {
+    let property = generate_name(index, "async_provider", provider_ty.span());
+
+    quote! {
+        #property: context.async_provider_fn::<#provider_ty>()
+    }
+}
+
 /// Create a list of statements to initialize the submodule variables during module build
 fn submodules_init(submodules: &Punctuated<Submodule, syn::Token![,]>) -> TokenStream {
     if submodules.is_empty() {
@@ -288,6 +336,16 @@ fn provider_property(index: usize, provider_ty: &Type) -> TokenStream {
 
     quote! {
         #property: ::std::sync::Arc<::shaku::ProviderFn<Self, #interface>>
+    }
+}
+
+#[cfg(feature = "async_provider")]
+fn async_provider_property(index: usize, provider_ty: &Type) -> TokenStream {
+    let property = generate_name(index, "async_provider", provider_ty.span());
+    let interface = interface_from_async_provider(provider_ty);
+
+    quote! {
+        #property: ::std::sync::Arc<::shaku::AsyncProviderFn<Self, #interface>>
     }
 }
 
@@ -353,8 +411,24 @@ fn has_provider_impl(index: usize, provider_ty: &Type, module: &ModuleData) -> T
         impl #impl_generics ::shaku::HasProvider<#interface> for #module_name #ty_generics #where_clause {
             fn provide(&self) -> ::std::result::Result<
                 ::std::boxed::Box<#interface>,
-                ::std::boxed::Box<dyn ::std::error::Error>
+                ::shaku::BoxedError,
             > {
+                (self.#property)(self)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "async_provider")]
+fn has_async_provider_impl(index: usize, provider_ty: &Type, module: &ModuleData) -> TokenStream {
+    let property = generate_name(index, "async_provider", provider_ty.span());
+    let interface = interface_from_async_provider(provider_ty);
+    let module_name = &module.metadata.identifier;
+    let (impl_generics, ty_generics, where_clause) = module.metadata.generics.split_for_impl();
+
+    quote! {
+        impl #impl_generics ::shaku::HasAsyncProvider<#interface> for #module_name #ty_generics #where_clause {
+            fn async_provide(&self) -> ::shaku::AsyncProvideFuture<'_, #interface> {
                 (self.#property)(self)
             }
         }
@@ -412,7 +486,7 @@ fn has_subprovider_impl(
         impl #impl_generics ::shaku::HasProvider<#provider_ty> for #module_name #ty_generics #where_clause {
             fn provide(&self) -> ::std::result::Result<
                 ::std::boxed::Box<#provider_ty>,
-                ::std::boxed::Box<dyn ::std::error::Error>
+                ::shaku::BoxedError,
             > {
                 ::shaku::HasProvider::provide(::std::sync::Arc::as_ref(&self.#submodule_name))
             }
@@ -431,6 +505,13 @@ fn interface_from_component(component_ty: &Type) -> TokenStream {
 fn interface_from_provider(provider_ty: &Type) -> TokenStream {
     quote! {
         <#provider_ty as ::shaku::Provider<Self>>::Interface
+    }
+}
+
+#[cfg(feature = "async_provider")]
+fn interface_from_async_provider(provider_ty: &Type) -> TokenStream {
+    quote! {
+        <#provider_ty as ::shaku::AsyncProvider<Self>>::Interface
     }
 }
 

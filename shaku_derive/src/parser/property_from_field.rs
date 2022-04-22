@@ -17,6 +17,10 @@ impl Parser<Property> for Field {
     fn parse_as(&self) -> syn::Result<Property> {
         let is_injected = check_for_attr(consts::INJECT_ATTR_NAME, &self.attrs);
         let is_provided = check_for_attr(consts::PROVIDE_ATTR_NAME, &self.attrs);
+        #[cfg(feature = "async_provider")]
+        let is_async_provided = check_for_attr(consts::ASYNC_PROVIDE_ATTR_NAME, &self.attrs);
+        #[cfg(not(feature = "async_provider"))]
+        let is_async_provided = false;
         let has_default = check_for_attr(consts::DEFAULT_ATTR_NAME, &self.attrs);
 
         let property_name = self.ident.clone().ok_or_else(|| {
@@ -29,8 +33,8 @@ impl Parser<Property> for Field {
             .cloned()
             .collect();
 
-        let property_type = match (is_injected, is_provided) {
-            (false, false) => {
+        let property_type = match (is_injected, is_provided, is_async_provided) {
+            (false, false, false) => {
                 let property_default = get_shaku_attribute(&self.attrs)
                     .map(|attr| match attr.parse_args::<KeyValue<Expr>>().ok() {
                         Some(inner) => {
@@ -65,9 +69,11 @@ impl Parser<Property> for Field {
                     doc_comment,
                 });
             }
-            (false, true) => PropertyType::Provided,
-            (true, false) => PropertyType::Component,
-            (true, true) => {
+            (false, true, false) => PropertyType::Provided,
+            (true, false, false) => PropertyType::Component,
+            #[cfg(feature = "async_provider")]
+            (false, false, true) => PropertyType::AsyncProvided,
+            _ => {
                 return Err(Error::new(
                     property_name.span(),
                     "Cannot inject and provide the same property",
@@ -83,6 +89,8 @@ impl Parser<Property> for Field {
                     match property_type {
                         PropertyType::Component => name == "Arc",
                         PropertyType::Provided => name == "Box",
+                        #[cfg(feature = "async_provider")]
+                        PropertyType::AsyncProvided => name == "Box",
                         PropertyType::Parameter => unreachable!(),
                     }
                 } =>
@@ -141,6 +149,15 @@ impl Parser<Property> for Field {
                     ),
                 )),
                 PropertyType::Parameter => unreachable!(),
+                #[cfg(feature = "async_provider")]
+                PropertyType::AsyncProvided => Err(Error::new(
+                    property_name.span(),
+                    format!(
+                        "Found non-Box type annotated with #[{}({})]",
+                        consts::ATTR_NAME,
+                        consts::ASYNC_PROVIDE_ATTR_NAME
+                    ),
+                )),
             },
         }
     }

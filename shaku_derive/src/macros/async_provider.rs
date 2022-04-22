@@ -6,7 +6,7 @@ use crate::structures::service::{Property, PropertyType, ServiceData};
 use proc_macro2::TokenStream;
 use syn::{DeriveInput, Error};
 
-pub fn expand_derive_provider(input: &DeriveInput) -> syn::Result<TokenStream> {
+pub fn expand_derive_async_provider(input: &DeriveInput) -> syn::Result<TokenStream> {
     let service = ServiceData::from_derive_input(input)?;
 
     let debug_level = get_debug_level();
@@ -35,16 +35,15 @@ pub fn expand_derive_provider(input: &DeriveInput) -> syn::Result<TokenStream> {
         impl<
             M: ::shaku::Module #(+ #dependencies)*,
             #generic_impls_no_parens
-        > ::shaku::Provider<M> for #provider_name #generic_tys #generic_where {
+        > ::shaku::AsyncProvider<M> for #provider_name #generic_tys #generic_where {
             type Interface = dyn #interface;
 
-            fn provide(module: &M) -> ::std::result::Result<
-                ::std::boxed::Box<Self::Interface>,
-                ::shaku::BoxedError,
-            > {
-                Ok(Box::new(Self {
-                    #(#resolve_properties),*
-                }))
+            fn async_provide(module: &M) -> ::shaku::AsyncProvideFuture<'_, Self::Interface> {
+                Box::pin(async move {
+                    Ok(Box::new(Self {
+                        #(#resolve_properties),*
+                    }) as Box<dyn #interface>)
+                })
             }
         }
     };
@@ -70,10 +69,8 @@ fn create_property_assignment(property: &Property) -> syn::Result<TokenStream> {
             property.property_name.span(),
             "Parameters are not allowed in Providers",
         )),
-        #[cfg(feature = "async_provider")]
-        PropertyType::AsyncProvided => Err(Error::new(
-            property.property_name.span(),
-            "Async provider is allowed in Async Providers only",
-        )),
+        PropertyType::AsyncProvided => Ok(quote! {
+            #property_name: module.async_provide().await?
+        }),
     }
 }

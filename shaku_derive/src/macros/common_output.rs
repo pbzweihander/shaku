@@ -14,5 +14,9 @@ pub fn create_dependency(property: &Property) -> Option<TokenStream> {
         PropertyType::Provided => Some(quote! {
             ::shaku::HasProvider<#property_ty>
         }),
+        #[cfg(feature = "async_provider")]
+        PropertyType::AsyncProvided => Some(quote! {
+            ::shaku::HasAsyncProvider<#property_ty>
+        }),
     }
 }
